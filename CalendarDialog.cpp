@@ -33,8 +33,6 @@ CalendarDialog::CalendarDialog(MainWindow *mainWindow, QWidget *parent)
     // Initialize calendar views
     updateMonthCalendar();
     updateDailySchedule();
-    
-    }
 }
 
 void CalendarDialog::setupUI()
@@ -1374,4 +1372,5 @@ void CalendarDialog::addLeagueSchedule(const QString &leagueName, const QDate &s
         QMessageBox::warning(this, "League Schedule Error", 
                            "Failed to create league schedule. Please check for conflicts and try again.");
     }
+
 }
