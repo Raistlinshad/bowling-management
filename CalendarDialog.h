@@ -51,7 +51,6 @@ private slots:
     void onNextDay();
     void onPrevMonth();
     void onNextMonth();
-    void onEventClicked(QListWidgetItem *item);
     void onEditEventClicked();
     void onDeleteEventClicked();
     void onCheckAvailabilityClicked();
@@ -181,5 +180,6 @@ private:
     CalendarEventData m_selectedEvent;
     bool m_hasSelectedEvent;
 };
+
 
 #endif // CALENDARDIALOG_H
