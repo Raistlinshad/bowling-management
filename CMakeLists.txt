@@ -42,7 +42,8 @@ set(HEADERS
     Actions.h
     EventBus.h
     LaneServer.h
-    LaneWidget.h
+    EnhancedLaneWidget.h
+    GameDisplayDialog.h
     QuickStartDialog.h
     QuickGameDialog.h
     LeagueGameDialog.h
@@ -78,4 +79,5 @@ set_target_properties(BowlingManagement PROPERTIES
 install(TARGETS BowlingManagement
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
+
 )
