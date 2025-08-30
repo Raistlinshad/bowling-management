@@ -79,5 +79,4 @@ set_target_properties(BowlingManagement PROPERTIES
 install(TARGETS BowlingManagement
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
-
 )

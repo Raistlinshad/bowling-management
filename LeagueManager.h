@@ -125,7 +125,7 @@ struct LeagueConfig {
     } pointSystem;
 };
 
-struct TeamData {
+struct LeagueTeamData {
     int teamId;
     int leagueId;
     QString name;
@@ -216,7 +216,7 @@ public:
     bool updateTeam(int teamId, const QString &teamName, const QVector<int> &bowlerIds);
     bool removeTeam(int teamId);
     bool assignTeamToDivision(int teamId, int divisionId);
-    QVector<TeamData> getLeagueTeams(int leagueId) const;
+    QVector<LeagueTeamData> getLeagueTeams(int leagueId) const;
     
     // Schedule generation
     bool generateLeagueSchedule(int leagueId);
@@ -298,12 +298,12 @@ private:
     
     void saveLeagueConfig(const LeagueConfig &config);
     void saveBowlerSeasonData(const BowlerSeasonData &data);
-    void saveTeamData(const TeamData &data);
+    void saveLeagueTeamData(const LeagueTeamData &data);
     void saveLeagueEvent(const LeagueEvent &event);
     
     LeagueConfig loadLeagueConfig(int leagueId) const;
     BowlerSeasonData loadBowlerSeasonData(int bowlerId, int leagueId) const;
-    TeamData loadTeamData(int teamId) const;
+    LeagueTeamData loadLeagueTeamData(int teamId) const;
     LeagueEvent loadLeagueEvent(int eventId) const;
     
     // Data members
@@ -311,7 +311,7 @@ private:
     DatabaseManager *m_dbManager;
     
     QMap<int, LeagueConfig> m_leagueConfigs;
-    QMap<int, QVector<TeamData>> m_leagueTeams;
+    QMap<int, QVector<LeagueTeamData>> m_leagueTeams;
     QMap<QPair<int, int>, BowlerSeasonData> m_bowlerSeasonData; // (bowlerId, leagueId) -> data
     QMap<int, QVector<LeagueEvent>> m_leagueEvents;
     
@@ -319,7 +319,7 @@ private:
     
     // Constants
     static const int DEFAULT_HIGH_HANDICAP = 225;
-    static const double DEFAULT_HANDICAP_PERCENTAGE = 0.8;
+    static constexpr double DEFAULT_HANDICAP_PERCENTAGE = 0.8;
     static const int MAX_TEAMS_PER_DIVISION = 12;
     static const int MIN_TEAMS_FOR_PLAYOFFS = 4;
 };

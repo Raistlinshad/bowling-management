@@ -24,7 +24,7 @@ enum class EnhancedLaneStatus {
     Error           // Red - Error state
 };
 
-struct BowlerData {
+struct BowlerGameState {
     QString name;
     int currentFrame = 1;
     int currentBall = 1;
@@ -36,7 +36,7 @@ struct BowlerData {
 
 struct GameData {
     QString gameType; // "quick_game", "league_game"
-    QVector<BowlerData> bowlers;
+    QVector<BowlerGameState> bowlers;
     int currentBowlerIndex = 0;
     bool isHeld = false;
     bool isCompleted = false;
