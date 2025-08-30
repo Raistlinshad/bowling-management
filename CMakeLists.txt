@@ -20,7 +20,8 @@ set(SOURCES
     Actions.cpp
     EventBus.cpp
     LaneServer.cpp
-    LaneWidget.cpp
+    EnhancedLaneWidget.cpp
+    GameDisplayDialog.cpp
     QuickStartDialog.cpp
     QuickGameDialog.cpp
     LeagueGameDialog.cpp
@@ -32,6 +33,7 @@ set(SOURCES
     CalendarDialog.cpp
     DatabaseBrowserDialog.cpp
     LeagueScheduleDialog.cpp
+    LeagueManager.cpp
 )
 
 # Header files
@@ -52,6 +54,7 @@ set(HEADERS
     CalendarDialog.h
     DatabaseBrowserDialog.h
     LeagueScheduleDialog.h
+    LeagueManager.h
 )
 
 # Create the executable

@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QDialog>
 #include <QJsonObject>
+#include <QDateTime>
 #include "EventBus.h"
 
 class MainWindow;
@@ -30,6 +31,7 @@ public slots:
     void settings();
     void testLaneConnection();
     void runQuickGameDiagnostic();
+    void endOfDay();
     void onDatabaseBrowserClicked();
 
 private:
@@ -40,6 +42,7 @@ private:
     void showLeagueManagementDialog();
     void showBowlerManagementDialog();
     void sendGameToLane(int laneId, const QString &gameType, const QJsonObject &gameData);
+    QString getSystemUptime() const;
     
     MainWindow *m_mainWindow;
     EventBus *m_eventBus;

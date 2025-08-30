@@ -1,12 +1,12 @@
 ﻿#include "MainWindow.h"
-#include "BowlerManagementDialog.h"
+#include "QuickGameDialog.h"
 #include <QApplication>
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QSplitter>
 #include <QGroupBox>
 #include <QMessageBox>
-
+#include <QJsonDocument>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -30,6 +30,14 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_laneServer, &LaneServer::gameDataReceived,
             this, &MainWindow::onGameDataReceived);
     
+    // Connect EventBus to lane commands
+    connect(m_eventBus, &EventBus::messagePublished,
+            [this](const QString &channel, const QString &event, const QJsonObject &data) {
+                if (channel == "server" && event == "lane_command") {
+                    m_laneServer->onLaneCommand(data);
+                }
+            });
+    
     // Start timer
     m_timeUpdateTimer->start(1000); // Update every second
     
@@ -42,6 +50,14 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // Clean up game dialogs
+    for (GameDisplayDialog *dialog : m_gameDialogs.values()) {
+        if (dialog) {
+            dialog->close();
+            dialog->deleteLater();
+        }
+    }
+    
     if (m_laneServer) {
         m_laneServer->stop();
     }
@@ -88,7 +104,7 @@ void MainWindow::setupTopBar()
 
 void MainWindow::setupQuickAccessButtons()
 {
-    // Status bar for quick access shortcuts - Updated to include F4 for Bowler Management
+    // Status bar for quick access shortcuts
     m_statusBar = new QLabel("F1: Quick Start   F2: League Start   F3: New Bowler   F4: Bowler Management   Esc: Main Menu");
     m_statusBar->setStyleSheet("QLabel { background-color: #2a2a2a; color: white; padding: 5px; }");
     m_statusBar->setAlignment(Qt::AlignCenter);
@@ -109,14 +125,13 @@ void MainWindow::setupMainContent()
     quickLayout->setSpacing(5);
     quickLayout->setContentsMargins(10, 10, 10, 10);
     
-    // Updated button list - FIXED: "Bowler Info" changed to "View Bowler" and "Bowler Management" stays as full management
     QStringList quickButtons = {"Quick Start", "View Bowler", "Bowler Management", "Calendar", "Teams", 
                                "Leagues", "Party", "Status", "Settings", "Test Lane", "QG Diagnostic", "DB Browser"};
     
     for (const QString &buttonText : quickButtons) {
         QPushButton *button = new QPushButton(buttonText);
         
-        // Special styling for Bowler Management button to make it stand out
+        // Special styling for important buttons
         if (buttonText == "Bowler Management") {
             button->setStyleSheet("QPushButton { "
                                  "background-color: #4A90E2; "
@@ -161,9 +176,9 @@ void MainWindow::setupMainContent()
 
 void MainWindow::setupLaneWidgets()
 {
-    // Create lane widgets container at bottom
+    // Create enhanced lane widgets container at bottom
     QFrame *laneFrame = new QFrame;
-    laneFrame->setFixedHeight(120);
+    laneFrame->setFixedHeight(160); // Increased height for enhanced widgets
     laneFrame->setStyleSheet("QFrame { background-color: #2a2a2a; border-top: 2px solid #333; }");
     
     m_laneScrollArea = new QScrollArea;
@@ -173,30 +188,34 @@ void MainWindow::setupLaneWidgets()
     m_laneScrollArea->setStyleSheet("QScrollArea { border: none; background-color: #2a2a2a; }");
     
     m_laneContainer = new QWidget;
-    m_laneLayout = new QGridLayout(m_laneContainer);
+    m_laneLayout = new QHBoxLayout(m_laneContainer); // Changed to horizontal layout
     m_laneLayout->setSpacing(5);
     m_laneLayout->setContentsMargins(10, 10, 10, 10);
     
-    // Create lane widgets
-    int columns = 12; // 12 lanes per row
+    // Create enhanced lane widgets
     for (int i = 1; i <= m_totalLanes; ++i) {
-        LaneWidget *laneWidget = new LaneWidget(i);
+        EnhancedLaneWidget *laneWidget = new EnhancedLaneWidget(i);
         
-        // Connect drag and drop signals
-        connect(laneWidget, &LaneWidget::teamMoveRequested,
-                this, [this](int fromLane, int toLane, const QString &teamData) {
-                    // Handle team movement between lanes
-                    if (m_laneServer) {
-                        m_laneServer->handleTeamMove(fromLane, toLane, teamData);
-                    }
-                });
+        // Connect all the enhanced signals
+        connect(laneWidget, &EnhancedLaneWidget::laneClicked,
+                this, &MainWindow::onLaneClicked);
+        connect(laneWidget, &EnhancedLaneWidget::holdToggled,
+                this, &MainWindow::onLaneHoldToggled);
+        connect(laneWidget, &EnhancedLaneWidget::bowlerButtonClicked,
+                this, &MainWindow::onBowlerButtonClicked);
+        connect(laneWidget, &EnhancedLaneWidget::gameEditRequested,
+                this, &MainWindow::onGameEditRequested);
+        connect(laneWidget, &EnhancedLaneWidget::gameResultsRequested,
+                this, &MainWindow::onGameResultsRequested);
+        connect(laneWidget, &EnhancedLaneWidget::laneShutdownRequested,
+                this, &MainWindow::onLaneShutdownRequested);
         
-        int row = (i - 1) / columns;
-        int col = (i - 1) % columns;
-        m_laneLayout->addWidget(laneWidget, row, col);
-        
+        m_laneLayout->addWidget(laneWidget);
         m_laneWidgets.append(laneWidget);
+        m_laneStatuses[i] = EnhancedLaneStatus::Disconnected;
     }
+    
+    m_laneLayout->addStretch(); // Add stretch at end
     
     m_laneScrollArea->setWidget(m_laneContainer);
     
@@ -215,6 +234,22 @@ QString MainWindow::getCurrentTime() const
 void MainWindow::updateTime()
 {
     m_dateTimeLabel->setText(getCurrentTime());
+}
+
+EnhancedLaneStatus MainWindow::convertLaneStatus(LaneStatus oldStatus)
+{
+    switch (oldStatus) {
+    case LaneStatus::Idle:
+        return EnhancedLaneStatus::Connected;
+    case LaneStatus::Active:
+        return EnhancedLaneStatus::QuickGame; // Will be updated based on game data
+    case LaneStatus::Maintenance:
+        return EnhancedLaneStatus::Maintenance;
+    case LaneStatus::Error:
+        return EnhancedLaneStatus::Error;
+    default:
+        return EnhancedLaneStatus::Disconnected;
+    }
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
@@ -244,6 +279,8 @@ void MainWindow::onQuickAccessButtonClicked(const QString &buttonText)
 {
     if (buttonText == "Quick Start") {
         m_actions->quickStart();
+    } else if (buttonText == "View Bowler") {
+        m_actions->bowlerInfo();
     } else if (buttonText == "Bowler Management") {
         onBowlerManagementClicked();
     } else if (buttonText == "Calendar") {
@@ -275,14 +312,657 @@ void MainWindow::onBowlerManagementClicked()
 
 void MainWindow::onLaneStatusChanged(int laneId, LaneStatus status)
 {
-    if (laneId > 0 && laneId <= m_laneWidgets.size()) {
-        m_laneWidgets[laneId - 1]->setStatus(status);
-    }
+    if (laneId <= 0 || laneId > m_laneWidgets.size()) return;
+    
+    EnhancedLaneStatus enhancedStatus = convertLaneStatus(status);
+    m_laneStatuses[laneId] = enhancedStatus;
+    m_laneWidgets[laneId - 1]->setStatus(enhancedStatus);
 }
 
 void MainWindow::onGameDataReceived(int laneId, const QJsonObject &gameData)
 {
-    if (laneId > 0 && laneId <= m_laneWidgets.size()) {
-        m_laneWidgets[laneId - 1]->updateGameData(gameData);
+    if (laneId <= 0 || laneId > m_laneWidgets.size()) return;
+    
+    // Store game data
+    m_laneGameData[laneId] = gameData;
+    
+    // Determine enhanced status based on game data
+    EnhancedLaneStatus status = EnhancedLaneStatus::Connected;
+    QString gameType = gameData["type"].toString();
+    bool isHeld = gameData["held"].toBool();
+    bool isCompleted = gameData["completed"].toBool();
+    
+    if (isCompleted) {
+        status = EnhancedLaneStatus::Completed;
+    } else if (isHeld) {
+        status = EnhancedLaneStatus::Hold;
+    } else if (gameType == "league_game") {
+        status = EnhancedLaneStatus::LeagueGame;
+    } else if (gameType == "quick_game") {
+        status = EnhancedLaneStatus::QuickGame;
     }
+    
+    m_laneStatuses[laneId] = status;
+    m_laneWidgets[laneId - 1]->setStatus(status);
+    m_laneWidgets[laneId - 1]->updateGameData(gameData);
+    
+    // Update existing game dialog if open
+    if (m_gameDialogs.contains(laneId) && m_gameDialogs[laneId]) {
+        m_gameDialogs[laneId]->updateGameInfo();
+    }
+}
+
+void MainWindow::onLaneClicked(int laneNumber)
+{
+    EnhancedLaneStatus status = m_laneStatuses.value(laneNumber, EnhancedLaneStatus::Disconnected);
+    
+    switch (status) {
+    case EnhancedLaneStatus::Disconnected:
+        QMessageBox::information(this, "Lane Disconnected", 
+                               QString("Lane %1 is not connected.").arg(laneNumber));
+        break;
+        
+    case EnhancedLaneStatus::Connected:
+        // Open quick game dialog with pre-populated lane ID
+        showQuickGameDialog(laneNumber);
+        break;
+        
+    case EnhancedLaneStatus::QuickGame:
+    case EnhancedLaneStatus::LeagueGame:
+    case EnhancedLaneStatus::Hold:
+        // Show game display with edit capabilities
+        showGameDisplayDialog(laneNumber);
+        break;
+        
+    case EnhancedLaneStatus::Completed:
+        // Show game results
+        showGameDisplayDialog(laneNumber);
+        break;
+        
+    case EnhancedLaneStatus::Maintenance:
+        QMessageBox::information(this, "Lane Maintenance", 
+                               QString("Lane %1 is in maintenance mode.").arg(laneNumber));
+        break;
+        
+    case EnhancedLaneStatus::Error:
+        QMessageBox::warning(this, "Lane Error", 
+                            QString("Lane %1 has an error. Please check lane status.").arg(laneNumber));
+        break;
+    }
+}
+
+void MainWindow::onLaneHoldToggled(int laneNumber, bool held)
+{
+    // Send hold command to lane
+    QJsonObject holdData;
+    holdData["hold"] = held;
+    sendLaneCommand(laneNumber, "hold_toggle", holdData);
+    
+    // Update local state immediately for UI responsiveness
+    if (m_laneGameData.contains(laneNumber)) {
+        QJsonObject gameData = m_laneGameData[laneNumber];
+        gameData["held"] = held;
+        m_laneGameData[laneNumber] = gameData;
+        
+        EnhancedLaneStatus newStatus = held ? EnhancedLaneStatus::Hold : 
+                                      (gameData["type"].toString() == "league_game" ? 
+                                       EnhancedLaneStatus::LeagueGame : EnhancedLaneStatus::QuickGame);
+        
+        m_laneStatuses[laneNumber] = newStatus;
+        m_laneWidgets[laneNumber - 1]->setStatus(newStatus);
+        m_laneWidgets[laneNumber - 1]->updateGameData(gameData);
+    }
+}
+
+void MainWindow::onBowlerButtonClicked(int laneNumber, const QString &bowlerName)
+{
+    // Show detailed bowler info or open game display
+    showGameDisplayDialog(laneNumber);
+}
+
+void MainWindow::onGameEditRequested(int laneNumber)
+{
+    showGameDisplayDialog(laneNumber);
+}
+
+void MainWindow::onGameResultsRequested(int laneNumber)
+{
+    showGameDisplayDialog(laneNumber);
+}
+
+void MainWindow::onLaneShutdownRequested(int laneNumber)
+{
+    // Send shutdown command to lane
+    sendLaneCommand(laneNumber, "shutdown");
+    
+    // Update local state
+    m_laneStatuses[laneNumber] = EnhancedLaneStatus::Connected;
+    m_laneWidgets[laneNumber - 1]->setStatus(EnhancedLaneStatus::Connected);
+    m_laneGameData.remove(laneNumber);
+    
+    // Close any open game dialog
+    if (m_gameDialogs.contains(laneNumber)) {
+        m_gameDialogs[laneNumber]->close();
+        m_gameDialogs[laneNumber]->deleteLater();
+        m_gameDialogs.remove(laneNumber);
+    }
+}
+
+void MainWindow::showGameDisplayDialog(int laneNumber)
+{
+    // Close existing dialog for this lane if open
+    if (m_gameDialogs.contains(laneNumber) && m_gameDialogs[laneNumber]) {
+        m_gameDialogs[laneNumber]->close();
+        m_gameDialogs[laneNumber]->deleteLater();
+    }
+    
+    // Get current game data
+    QJsonObject gameData = m_laneGameData.value(laneNumber);
+    if (gameData.isEmpty()) {
+        QMessageBox::information(this, "No Game Data", 
+                               QString("No game data available for Lane %1.").arg(laneNumber));
+        return;
+    }
+    
+    // Create new game display dialog
+    GameDisplayDialog *dialog = new GameDisplayDialog(laneNumber, gameData, this);
+    
+    // Connect dialog signals
+    connect(dialog, &GameDisplayDialog::holdToggled,
+            this, &MainWindow::onLaneHoldToggled);
+    connect(dialog, &GameDisplayDialog::ballValueChanged,
+            this, &MainWindow::onBallValueChanged);
+    connect(dialog, &GameDisplayDialog::revertLastBall,
+            this, &MainWindow::onRevertLastBall);
+    connect(dialog, &GameDisplayDialog::gameEdited,
+            this, &MainWindow::onGameEdited);
+    connect(dialog, &GameDisplayDialog::laneShutdown,
+            this, &MainWindow::onLaneShutdownRequested);
+    
+    // Clean up when dialog closes
+    connect(dialog, &QDialog::finished, [this, laneNumber]() {
+        if (m_gameDialogs.contains(laneNumber)) {
+            m_gameDialogs[laneNumber]->deleteLater();
+            m_gameDialogs.remove(laneNumber);
+        }
+    });
+    
+    m_gameDialogs[laneNumber] = dialog;
+    dialog->show();
+}
+
+void MainWindow::showQuickGameDialog(int laneNumber)
+{
+    QuickGameDialog dialog(this);
+    
+    // Pre-populate lane ID
+    QLineEdit *laneEdit = dialog.findChild<QLineEdit*>("laneEdit");
+    if (laneEdit) {
+        laneEdit->setText(QString::number(laneNumber));
+    }
+    
+    if (dialog.exec() == QDialog::Accepted) {
+        QJsonObject gameData = dialog.getGameData();
+        int laneId = gameData["lane_id"].toInt();
+        
+        // Send game to lane through event bus
+        QJsonObject commandData;
+        commandData["lane_id"] = laneId;
+        commandData["type"] = "quick_game";
+        commandData["data"] = gameData;
+        
+        m_eventBus->publish("server", "lane_command", commandData);
+    }
+}
+
+void MainWindow::sendLaneCommand(int laneNumber, const QString &command, const QJsonObject &data)
+{
+    QJsonObject commandData = data;
+    commandData["lane_id"] = laneNumber;
+    commandData["command"] = command;
+    
+    m_eventBus->publish("server", "lane_command", commandData);
+}
+
+void MainWindow::onBallValueChanged(int laneNumber, const QString &bowlerName, int frame, int ball, int newValue)
+{
+    // Send pin update command to lane
+    QJsonObject updateData;
+    updateData["bowler_name"] = bowlerName;
+    updateData["frame"] = frame;
+    updateData["ball"] = ball;
+    updateData["new_value"] = newValue;
+    
+    sendLaneCommand(laneNumber, "update_ball", updateData);
+    
+    qDebug() << "Ball update sent - Lane:" << laneNumber << "Bowler:" << bowlerName 
+             << "Frame:" << frame << "Ball:" << ball << "Value:" << newValue;
+}
+
+void MainWindow::onRevertLastBall(int laneNumber)
+{
+    // Send revert command to lane
+    sendLaneCommand(laneNumber, "revert_last_ball");
+    
+    qDebug() << "Revert last ball command sent to lane" << laneNumber;
+}
+
+void MainWindow::onGameEdited(int laneNumber, const QJsonObject &updatedData)
+{
+    // Send updated game data to lane
+    sendLaneCommand(laneNumber, "update_game_data", updatedData);
+    
+    // Update local data
+    m_laneGameData[laneNumber] = updatedData;
+    
+    qDebug() << "Game data updated for lane" << laneNumber;
+}
+
+void LaneServer::processMessage(QTcpSocket *socket, const QJsonObject &message)
+{
+    QString type = message["type"].toString();
+    QJsonObject data = message["data"].toObject();
+    int laneId = getLaneIdFromSocket(socket);
+    
+    qDebug() << "Processing message from lane" << laneId << "type:" << type;
+    
+    if (type == "registration") {
+        handleRegistration(socket, message);
+    } else if (type == "heartbeat") {
+        handleHeartbeat(socket, message);
+    } else if (type == "game_data") {
+        handleGameData(socket, message);
+    } else if (type == "quick_game_update") {
+        handleQuickGameMessage(laneId, data);
+    } else if (type == "league_game_update") {
+        handleLeagueGameMessage(laneId, data);
+    } else if (type == "game_complete") {
+        handleGameComplete(laneId, data);
+    } else if (type == "display_mode_change") {
+        handleDisplayModeChange(laneId, data);
+    } else if (type == "ball_thrown") {
+        handleBallThrown(laneId, data);
+    } else if (type == "frame_complete") {
+        handleFrameComplete(laneId, data);
+    } else if (type == "status_update") {
+        handleStatusUpdate(laneId, data);
+    } else if (type == "hold_acknowledged") {
+        handleHoldAcknowledged(laneId, data);
+    } else if (type == "ball_update_acknowledged") {
+        handleBallUpdateAcknowledged(laneId, data);
+    } else if (type == "revert_acknowledged") {
+        handleRevertAcknowledged(laneId, data);
+    } else if (type == "shutdown_acknowledged") {
+        handleShutdownAcknowledged(laneId, data);
+    } else {
+        qWarning() << "Unknown message type from lane" << laneId << ":" << type;
+    }
+}
+
+void LaneServer::handleHoldAcknowledged(int laneId, const QJsonObject &data)
+{
+    bool isHeld = data["held"].toBool();
+    qDebug() << "Lane" << laneId << "hold state changed to:" << isHeld;
+    
+    // Update game data to reflect hold state
+    if (m_laneGameData.contains(laneId)) {
+        QJsonObject gameData = m_laneGameData[laneId];
+        gameData["held"] = isHeld;
+        m_laneGameData[laneId] = gameData;
+        
+        // Emit updated game data
+        emit gameDataReceived(laneId, gameData);
+    }
+    
+    // Update status
+    if (isHeld) {
+        setLaneStatus(laneId, LaneStatus::Error); // Repurpose Error as Hold for now
+    } else {
+        setLaneStatus(laneId, LaneStatus::Active);
+    }
+}
+
+void LaneServer::handleBallUpdateAcknowledged(int laneId, const QJsonObject &data)
+{
+    QString bowlerName = data["bowler_name"].toString();
+    int frame = data["frame"].toInt();
+    int ball = data["ball"].toInt();
+    int newValue = data["new_value"].toInt();
+    
+    qDebug() << "Lane" << laneId << "acknowledged ball update for" << bowlerName 
+             << "frame" << frame << "ball" << ball << "new value:" << newValue;
+    
+    // Update stored game data with new ball value
+    if (m_laneGameData.contains(laneId)) {
+        QJsonObject gameData = m_laneGameData[laneId];
+        QJsonArray bowlers = gameData["bowlers"].toArray();
+        
+        for (int i = 0; i < bowlers.size(); ++i) {
+            QJsonObject bowlerData = bowlers[i].toObject();
+            if (bowlerData["name"].toString() == bowlerName) {
+                QJsonArray frames = bowlerData["frames"].toArray();
+                
+                if (frame - 1 < frames.size()) {
+                    QJsonArray frameData = frames[frame - 1].toArray();
+                    
+                    // Ensure frame array is large enough
+                    while (frameData.size() < ball) {
+                        frameData.append(-1);
+                    }
+                    
+                    // Update the specific ball
+                    frameData[ball - 1] = newValue;
+                    frames[frame - 1] = frameData;
+                    bowlerData["frames"] = frames;
+                    
+                    // Recalculate totals (simplified - real implementation would be more complex)
+                    int newTotal = bowlerData["total_score"].toInt();
+                    bowlerData["total_score"] = newTotal;
+                    
+                    bowlers[i] = bowlerData;
+                    break;
+                }
+            }
+        }
+        
+        gameData["bowlers"] = bowlers;
+        m_laneGameData[laneId] = gameData;
+        
+        // Emit updated game data
+        emit gameDataReceived(laneId, gameData);
+    }
+}
+
+void LaneServer::handleRevertAcknowledged(int laneId, const QJsonObject &data)
+{
+    qDebug() << "Lane" << laneId << "acknowledged revert last ball";
+    
+    // Lane will send updated game data after reverting
+    // Just log the acknowledgment for now
+    QString revertedBowler = data["bowler_name"].toString();
+    int revertedFrame = data["frame"].toInt();
+    int revertedBall = data["ball"].toInt();
+    
+    qDebug() << "Reverted ball for" << revertedBowler << "frame" << revertedFrame << "ball" << revertedBall;
+}
+
+void LaneServer::handleShutdownAcknowledged(int laneId, const QJsonObject &data)
+{
+    qDebug() << "Lane" << laneId << "acknowledged shutdown command";
+    
+    // Clear game state
+    m_laneGameTypes.remove(laneId);
+    m_laneGameData.remove(laneId);
+    
+    // Set status back to ready/connected
+    setLaneStatus(laneId, LaneStatus::Idle);
+    
+    // Notify that lane is now available
+    emit laneStatusChanged(laneId, LaneStatus::Idle);
+}
+
+// Enhanced command handlers for new functionality
+void LaneServer::processClientMessage(QTcpSocket *socket, const QJsonObject &message)
+{
+    QString type = message["type"].toString();
+    QJsonObject data = message["data"].toObject();
+    int laneId = getLaneIdFromSocket(socket);
+    
+    qDebug() << "Processing message from lane" << laneId << "type:" << type;
+    
+    if (type == "quick_game") {
+        handleQuickGameMessage(laneId, data);
+    } else if (type == "league_game") {
+        handleLeagueGameMessage(laneId, data);
+    } else if (type == "game_complete") {
+        handleGameComplete(laneId, data);
+    } else if (type == "display_mode_change") {
+        handleDisplayModeChange(laneId, data);
+    } else if (type == "ball_thrown") {
+        handleBallThrown(laneId, data);
+    } else if (type == "frame_complete") {
+        handleFrameComplete(laneId, data);
+    } else if (type == "status_update") {
+        handleStatusUpdate(laneId, data);
+    } else if (type == "hold_acknowledged") {
+        handleHoldAcknowledged(laneId, data);
+    } else if (type == "ball_update_acknowledged") {
+        handleBallUpdateAcknowledged(laneId, data);
+    } else if (type == "revert_acknowledged") {
+        handleRevertAcknowledged(laneId, data);
+    } else if (type == "shutdown_acknowledged") {
+        handleShutdownAcknowledged(laneId, data);
+    } else {
+        qWarning() << "Unknown message type from lane" << laneId << ":" << type;
+    }
+}
+
+// Enhanced lane command processor
+void LaneServer::onLaneCommand(const QJsonObject &data)
+{
+    int laneId = data["lane_id"].toInt();
+    QString command = data["command"].toString();
+    QString type = data["type"].toString();
+    QJsonObject commandData = data["data"].toObject();
+    
+    qDebug() << "Processing lane command:" << command << "type:" << type << "for lane" << laneId;
+    
+    if (!command.isEmpty()) {
+        // New command-based system
+        if (command == "hold_toggle") {
+            sendHoldCommand(laneId, commandData["hold"].toBool());
+        } else if (command == "update_ball") {
+            sendBallUpdateCommand(laneId, commandData);
+        } else if (command == "revert_last_ball") {
+            sendRevertCommand(laneId);
+        } else if (command == "shutdown") {
+            sendShutdownCommand(laneId);
+        } else {
+            qWarning() << "Unknown command:" << command;
+        }
+    } else if (!type.isEmpty()) {
+        // Legacy type-based system
+        sendToLane(laneId, type, commandData);
+    }
+}
+
+void LaneServer::sendHoldCommand(int laneId, bool hold)
+{
+    QJsonObject holdData;
+    holdData["hold"] = hold;
+    holdData["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    sendToLane(laneId, "hold_toggle", holdData);
+    
+    qDebug() << "Sent hold command to lane" << laneId << "hold:" << hold;
+}
+
+void LaneServer::sendBallUpdateCommand(int laneId, const QJsonObject &updateData)
+{
+    QJsonObject ballUpdate;
+    ballUpdate["bowler_name"] = updateData["bowler_name"];
+    ballUpdate["frame"] = updateData["frame"];
+    ballUpdate["ball"] = updateData["ball"];
+    ballUpdate["new_value"] = updateData["new_value"];
+    ballUpdate["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    sendToLane(laneId, "update_ball", ballUpdate);
+    
+    qDebug() << "Sent ball update to lane" << laneId << ":" << updateData;
+}
+
+void LaneServer::sendRevertCommand(int laneId)
+{
+    QJsonObject revertData;
+    revertData["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    sendToLane(laneId, "revert_last_ball", revertData);
+    
+    qDebug() << "Sent revert last ball command to lane" << laneId;
+}
+
+void LaneServer::sendShutdownCommand(int laneId)
+{
+    QJsonObject shutdownData;
+    shutdownData["reason"] = "operator_request";
+    shutdownData["return_to"] = "advertising";
+    shutdownData["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    sendToLane(laneId, "shutdown_lane", shutdownData);
+    
+    qDebug() << "Sent shutdown command to lane" << laneId;
+}
+
+// Enhanced game data tracking with hold states
+void LaneServer::handleQuickGameMessage(int laneId, const QJsonObject &data)
+{
+    qDebug() << "Starting Quick Game on lane" << laneId;
+    
+    // Store game type and enhanced data
+    m_laneGameTypes[laneId] = "quick_game";
+    
+    // Create enhanced game data with 5-pin bowling structure
+    QJsonObject enhancedData = data;
+    enhancedData["held"] = false;
+    enhancedData["completed"] = false;
+    enhancedData["current_bowler"] = 0;
+    enhancedData["current_frame"] = 1;
+    enhancedData["current_ball"] = 1;
+    
+    // Initialize bowler frame data for 5-pin bowling
+    QJsonArray bowlers = data["bowlers"].toArray();
+    QJsonArray enhancedBowlers;
+    
+    for (int i = 0; i < bowlers.size(); ++i) {
+        QJsonObject bowler = bowlers[i].toObject();
+        
+        // Initialize frame structure (10 frames, up to 3 balls each for 5-pin)
+        QJsonArray frames;
+        QJsonArray frameTotals;
+        QJsonArray runningTotals;
+        
+        for (int f = 0; f < 10; ++f) {
+            QJsonArray frameData;
+            frameData.append(-1); // Ball 1 (not thrown yet)
+            frameData.append(-1); // Ball 2
+            frameData.append(-1); // Ball 3
+            frames.append(frameData);
+            frameTotals.append(0);
+            runningTotals.append(0);
+        }
+        
+        bowler["frames"] = frames;
+        bowler["frame_totals"] = frameTotals;
+        bowler["running_totals"] = runningTotals;
+        bowler["current_frame"] = 1;
+        bowler["current_ball"] = 1;
+        bowler["total_score"] = 0;
+        bowler["is_active"] = (i == 0); // First bowler is active
+        
+        enhancedBowlers.append(bowler);
+    }
+    
+    enhancedData["bowlers"] = enhancedBowlers;
+    m_laneGameData[laneId] = enhancedData;
+    
+    // Create response data
+    QJsonObject response;
+    response["type"] = "quick_game_start";
+    response["lane_id"] = laneId;
+    response["game_data"] = enhancedData;
+    response["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    // Send to lane
+    sendMessageToLane(laneId, response);
+    
+    // Update lane status
+    setLaneStatus(laneId, LaneStatus::Active);
+    emit gameStarted(laneId, "quick_game", enhancedData);
+    emit gameDataReceived(laneId, enhancedData);
+}
+
+void LaneServer::handleLeagueGameMessage(int laneId, const QJsonObject &data)
+{
+    qDebug() << "Starting League Game on lane" << laneId;
+    
+    // Store game type and enhanced data
+    m_laneGameTypes[laneId] = "league_game";
+    
+    QJsonObject enhancedData = data;
+    enhancedData["held"] = false;
+    enhancedData["completed"] = false;
+    enhancedData["current_bowler"] = 0;
+    
+    // Initialize team/bowler data similar to quick game but with league specifics
+    QJsonArray teams = data["teams"].toArray();
+    QJsonArray enhancedBowlers;
+    
+    for (const QJsonValue &teamValue : teams) {
+        QJsonObject team = teamValue.toObject();
+        QJsonArray teamBowlers = team["bowlers"].toArray();
+        
+        for (const QJsonValue &bowlerValue : teamBowlers) {
+            QJsonObject bowler = bowlerValue.toObject();
+            
+            // Add league-specific data
+            bowler["team_name"] = team["name"];
+            bowler["average"] = bowler.value("average", 150.0);
+            bowler["handicap"] = bowler.value("handicap", 0.0);
+            
+            // Initialize frame structure
+            QJsonArray frames;
+            QJsonArray frameTotals;
+            QJsonArray runningTotals;
+            
+            for (int f = 0; f < 10; ++f) {
+                QJsonArray frameData;
+                frameData.append(-1);
+                frameData.append(-1); 
+                frameData.append(-1);
+                frames.append(frameData);
+                frameTotals.append(0);
+                runningTotals.append(0);
+            }
+            
+            bowler["frames"] = frames;
+            bowler["frame_totals"] = frameTotals;
+            bowler["running_totals"] = runningTotals;
+            bowler["current_frame"] = 1;
+            bowler["current_ball"] = 1;
+            bowler["total_score"] = 0;
+            bowler["is_active"] = (enhancedBowlers.size() == 0);
+            
+            enhancedBowlers.append(bowler);
+        }
+    }
+    
+    enhancedData["bowlers"] = enhancedBowlers;
+    enhancedData["team_name"] = teams.size() > 0 ? teams[0].toObject()["name"].toString() : "";
+    
+    m_laneGameData[laneId] = enhancedData;
+    
+    int leagueId = data["league_id"].toInt();
+    int eventId = data["event_id"].toInt();
+    
+    // Notify league manager
+    if (m_leagueManager) {
+        m_leagueManager->handleLeagueGameStart(laneId, enhancedData);
+    }
+    
+    // Create response data with league-specific configuration
+    QJsonObject response;
+    response["type"] = "league_game_start";
+    response["lane_id"] = laneId;
+    response["league_id"] = leagueId;
+    response["event_id"] = eventId;
+    response["game_data"] = enhancedData;
+    response["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    // Send to lane
+    sendMessageToLane(laneId, response);
+    
+    // Update lane status to special league status
+    setLaneStatus(laneId, LaneStatus::Active);
+    emit gameStarted(laneId, "league_game", enhancedData);
+    emit gameDataReceived(laneId, enhancedData);
 }

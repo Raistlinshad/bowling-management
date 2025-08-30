@@ -12,10 +12,13 @@
 #include <QScrollArea>
 #include <QDateTime>
 #include <QKeyEvent>
+#include <QDialog>
+#include <QMap>
 #include "LaneServer.h"
 #include "EventBus.h"
 #include "Actions.h"
-#include "LaneWidget.h"
+#include "EnhancedLaneWidget.h"
+#include "GameDisplayDialog.h"
 #include "BowlerManagementDialog.h"
 
 class MainWindow : public QMainWindow
@@ -35,6 +38,19 @@ private slots:
     void onLaneStatusChanged(int laneId, LaneStatus status);
     void onGameDataReceived(int laneId, const QJsonObject &gameData);
     void onBowlerManagementClicked();
+    
+    // Enhanced lane widget slots
+    void onLaneClicked(int laneNumber);
+    void onLaneHoldToggled(int laneNumber, bool held);
+    void onBowlerButtonClicked(int laneNumber, const QString &bowlerName);
+    void onGameEditRequested(int laneNumber);
+    void onGameResultsRequested(int laneNumber);
+    void onLaneShutdownRequested(int laneNumber);
+    
+    // Game display dialog slots
+    void onBallValueChanged(int laneNumber, const QString &bowlerName, int frame, int ball, int newValue);
+    void onRevertLastBall(int laneNumber);
+    void onGameEdited(int laneNumber, const QJsonObject &updatedData);
 
 private:
     void setupUI();
@@ -42,6 +58,10 @@ private:
     void setupQuickAccessButtons();
     void setupLaneWidgets();
     void setupMainContent();
+    void showGameDisplayDialog(int laneNumber);
+    void showQuickGameDialog(int laneNumber);
+    void sendLaneCommand(int laneNumber, const QString &command, const QJsonObject &data = QJsonObject());
+    EnhancedLaneStatus convertLaneStatus(LaneStatus oldStatus);
     
     // UI Components
     QWidget *m_centralWidget;
@@ -65,9 +85,16 @@ private:
     EventBus *m_eventBus;
     Actions *m_actions;
     
-    // Lane widgets
-    QVector<LaneWidget*> m_laneWidgets;
+    // Enhanced lane widgets
+    QVector<EnhancedLaneWidget*> m_laneWidgets;
     int m_totalLanes;
+    
+    // Game display dialogs (one per lane)
+    QMap<int, GameDisplayDialog*> m_gameDialogs;
+    
+    // Lane data tracking
+    QMap<int, QJsonObject> m_laneGameData;
+    QMap<int, EnhancedLaneStatus> m_laneStatuses;
     
     QString getCurrentTime() const;
 };
