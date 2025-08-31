@@ -13,15 +13,14 @@ MainWindow::MainWindow(QWidget *parent)
     , m_centralWidget(nullptr)
     , m_timeUpdateTimer(new QTimer(this))
     , m_laneServer(nullptr)
-    , m_eventBus(new EventBus(this))
     , m_actions(nullptr)
     , m_totalLanes(8) // Default 8 lanes, should be configurable
 {
     setupUI();
     
     // Initialize core components
-    m_laneServer = new LaneServer(m_eventBus, this);
-    m_actions = new Actions(this, m_eventBus, this);
+    m_laneServer = new LaneServer(this);
+    m_actions = new Actions(this, this);
     
     // Connect signals
     connect(m_timeUpdateTimer, &QTimer::timeout, this, &MainWindow::updateTime);
@@ -29,14 +28,6 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onLaneStatusChanged);
     connect(m_laneServer, &LaneServer::gameDataReceived,
             this, &MainWindow::onGameDataReceived);
-    
-    // Connect EventBus to lane commands
-    connect(m_eventBus, &EventBus::messagePublished,
-            [this](const QString &channel, const QString &event, const QJsonObject &data) {
-                if (channel == "server" && event == "lane_command") {
-                    m_laneServer->onLaneCommand(data);
-                }
-            });
     
     // Start timer
     m_timeUpdateTimer->start(1000); // Update every second
@@ -511,7 +502,7 @@ void MainWindow::showQuickGameDialog(int laneNumber)
         commandData["type"] = "quick_game";
         commandData["data"] = gameData;
         
-        m_eventBus->publish("server", "lane_command", commandData);
+        m_laneServer->onLaneCommand(commandData);
     }
 }
 
@@ -521,7 +512,7 @@ void MainWindow::sendLaneCommand(int laneNumber, const QString &command, const Q
     commandData["lane_id"] = laneNumber;
     commandData["command"] = command;
     
-    m_eventBus->publish("server", "lane_command", commandData);
+    m_laneServer->onLaneCommand(commandData);
 }
 
 void MainWindow::onBallValueChanged(int laneNumber, const QString &bowlerName, int frame, int ball, int newValue)

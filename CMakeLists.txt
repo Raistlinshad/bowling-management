@@ -18,7 +18,6 @@ set(SOURCES
     main.cpp
     MainWindow.cpp
     Actions.cpp
-    EventBus.cpp
     LaneServer.cpp
     EnhancedLaneWidget.cpp
     GameDisplayDialog.cpp
@@ -40,7 +39,6 @@ set(SOURCES
 set(HEADERS
     MainWindow.h
     Actions.h
-    EventBus.h
     LaneServer.h
     EnhancedLaneWidget.h
     GameDisplayDialog.h

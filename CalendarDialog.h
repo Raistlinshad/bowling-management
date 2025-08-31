@@ -30,7 +30,6 @@
 #include <QCheckBox>
 #include <QSettings>
 #include "DatabaseManager.h"
-#include "EventBus.h"
 #include "LeagueScheduleDialog.h"
 
 class MainWindow;
@@ -96,7 +95,6 @@ private:
     
     MainWindow *m_mainWindow;
     DatabaseManager *m_dbManager;
-    EventBus *m_eventBus;
     
     // Main layout
     QHBoxLayout *m_mainLayout;

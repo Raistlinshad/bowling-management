@@ -6,7 +6,6 @@
 #include <QDialog>
 #include <QJsonObject>
 #include <QDateTime>
-#include "EventBus.h"
 
 class MainWindow;
 
@@ -15,7 +14,7 @@ class Actions : public QObject
     Q_OBJECT
 
 public:
-    explicit Actions(MainWindow *mainWindow, EventBus *eventBus, QObject *parent = nullptr);
+    explicit Actions(MainWindow *mainWindow,QObject *parent = nullptr);
     
 public slots:
     void quickStart();
@@ -45,7 +44,6 @@ private:
     QString getSystemUptime() const;
     
     MainWindow *m_mainWindow;
-    EventBus *m_eventBus;
 };
 
 #endif // ACTIONS_H

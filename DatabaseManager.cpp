@@ -47,6 +47,28 @@ bool DatabaseManager::initializeDatabase()
     return createTables();
 }
 
+bool DatabaseManager::backupDatabase(const QString& backupPath)
+{
+    if (!m_database.isOpen()) {
+        qWarning() << "Database is not open, cannot create backup";
+        return false;
+    }
+    
+    // Get the current database file path
+    QString currentPath = m_database.databaseName();
+    
+    // Copy the database file to backup location
+    bool success = QFile::copy(currentPath, backupPath);
+    
+    if (success) {
+        qDebug() << "Database backup created:" << backupPath;
+    } else {
+        qWarning() << "Failed to create database backup:" << backupPath;
+    }
+    
+    return success;
+}
+
 void DatabaseManager::closeDatabase()
 {
     if (m_database.isOpen()) {

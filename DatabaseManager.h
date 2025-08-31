@@ -75,6 +75,7 @@ public:
     static DatabaseManager* instance();
     
     bool initializeDatabase();
+    bool backupDatabase(const QString& backupPath);
     void closeDatabase();
     
     // Bowler operations

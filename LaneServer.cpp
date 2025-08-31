@@ -7,17 +7,21 @@
 #include <QTcpSocket>
 #include <QTimer>
 
-LaneServer::LaneServer(EventBus *eventBus, QObject *parent)
+LaneServer::LaneServer(QObject *parent)
     : QObject(parent)
     , m_leagueManager(new LeagueManager(this, this))
     , m_server(new QTcpServer(this))
-    , m_eventBus(eventBus)
     , m_connectionTimer(new QTimer(this))
 {
     connect(m_server, &QTcpServer::newConnection, this, &LaneServer::onNewConnection);
     connect(m_connectionTimer, &QTimer::timeout, this, &LaneServer::checkConnections);
     connect(m_leagueManager, &LeagueManager::sendToLane,
-            this, &LaneServer::sendMessageToLane);
+            this, [this](int laneId, const QString& command, const QJsonObject& data) {
+                QJsonObject message;
+                message["type"] = command;
+                message["data"] = data;
+                sendMessageToLane(laneId, message);
+            });
     connect(m_leagueManager, &LeagueManager::leagueCreated,
             this, &LaneServer::onLeagueCreated);
     connect(m_leagueManager, &LeagueManager::eventCompleted,
@@ -119,33 +123,6 @@ void LaneServer::onClientDataReady()
         if (doc.isObject()) {
             processMessage(socket, doc.object());
         }
-    }
-}
-
-void LaneServer::processClientMessage(QTcpSocket *socket, const QJsonObject &message)
-{
-    QString type = message["type"].toString();
-    QJsonObject data = message["data"].toObject();
-    int laneId = getLaneIdFromSocket(socket);
-    
-    qDebug() << "Processing message from lane" << laneId << "type:" << type;
-    
-    if (type == "quick_game") {
-        handleQuickGameMessage(laneId, data);
-    } else if (type == "league_game") {
-        handleLeagueGameMessage(laneId, data);
-    } else if (type == "game_complete") {
-        handleGameComplete(laneId, data);
-    } else if (type == "display_mode_change") {
-        handleDisplayModeChange(laneId, data);
-    } else if (type == "ball_thrown") {
-        handleBallThrown(laneId, data);
-    } else if (type == "frame_complete") {
-        handleFrameComplete(laneId, data);
-    } else if (type == "status_update") {
-        handleStatusUpdate(laneId, data);
-    } else {
-        qWarning() << "Unknown message type from lane" << laneId << ":" << type;
     }
 }
 
@@ -287,79 +264,6 @@ void LaneServer::handleTeamMove(int fromLane, int toLane, const QString &teamDat
     sendToLane(fromLane, "team_move_confirm", confirmData);
 }
 
-void LaneServer::onLaneCommand(const QJsonObject &data)
-{
-    int laneId = data["lane_id"].toInt();
-    QString type = data["type"].toString();
-    QJsonObject commandData = data["data"].toObject();
-    
-    qDebug() << "Lane command:" << type << "for lane" << laneId;
-    
-    sendToLane(laneId, type, commandData);
-}
-void LaneServer::handleQuickGameMessage(int laneId, const QJsonObject &data)
-{
-    qDebug() << "Starting Quick Game on lane" << laneId;
-    
-    // Store game type and data
-    m_laneGameTypes[laneId] = "quick_game";
-    m_laneGameData[laneId] = data;
-    
-    // Create response data
-    QJsonObject response;
-    response["type"] = "quick_game_start";
-    response["lane_id"] = laneId;
-    response["game_data"] = data;
-    response["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
-    
-    // Send acknowledgment back to lane
-    sendMessageToLane(laneId, response);
-    
-    // Update lane status
-    setLaneStatus(laneId, LaneStatus::Gaming);
-    emit gameStarted(laneId, "quick_game", data);
-}
-
-void LaneServer::handleLeagueGameMessage(int laneId, const QJsonObject &data)
-{
-    qDebug() << "Starting League Game on lane" << laneId;
-    
-    // Store game type and data
-    m_laneGameTypes[laneId] = "league_game";
-    m_laneGameData[laneId] = data;
-    
-    int leagueId = data["league_id"].toInt();
-    int eventId = data["event_id"].toInt();
-    
-    // Notify league manager
-    if (m_leagueManager) {
-        m_leagueManager->handleLeagueGameStart(laneId, data);
-    }
-    
-    // Create response data with league-specific configuration
-    QJsonObject response;
-    response["type"] = "league_game_start";
-    response["lane_id"] = laneId;
-    response["league_id"] = leagueId;
-    response["event_id"] = eventId;
-    response["game_data"] = data;
-    response["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
-    
-    // Add league-specific display settings
-    QJsonObject displaySettings;
-    displaySettings["show_handicap"] = data.value("handicap_enabled", true).toBool();
-    displaySettings["show_averages"] = true;
-    displaySettings["team_play"] = true;
-    displaySettings["point_system"] = data.value("point_system", 0).toInt();
-    response["display_settings"] = displaySettings;
-    
-    // Send to lane
-    sendMessageToLane(laneId, response);
-    
-    // Update lane status
-    setLaneStatus(laneId, LaneStatus::LeagueGame);
-    emit gameStarted(laneId, "league_game", data);
-}
 
 void LaneServer::handleDisplayModeChange(int laneId, const QJsonObject &data)
 {
@@ -810,7 +714,6 @@ void LaneServer::processClientMessage(QTcpSocket *socket, const QJsonObject &mes
     }
 }
 
-// Enhanced lane command processor
 void LaneServer::onLaneCommand(const QJsonObject &data)
 {
     int laneId = data["lane_id"].toInt();
@@ -979,8 +882,8 @@ void LaneServer::handleLeagueGameMessage(int laneId, const QJsonObject &data)
             
             // Add league-specific data
             bowler["team_name"] = team["name"];
-            bowler["average"] = bowler.value("average", 150.0);
-            bowler["handicap"] = bowler.value("handicap", 0.0);
+            bowler["average"] = bowler.contains("average") ? bowler["average"].toDouble() : 150.0;
+            bowler["handicap"] = bowler.contains("handicap") ? bowler["handicap"].toDouble() : 0.0;
             
             // Initialize frame structure
             QJsonArray frames;
@@ -1039,10 +942,3 @@ void LaneServer::handleLeagueGameMessage(int laneId, const QJsonObject &data)
     emit gameStarted(laneId, "league_game", enhancedData);
     emit gameDataReceived(laneId, enhancedData);
 }
-
-// Add these signal declarations to LaneServer.h signals section:
-signals:
-    void gameStarted(int laneId, const QString &gameType, const QJsonObject &gameData);
-    void ballUpdated(int laneId, const QString &bowlerName, int frame, int ball, int newValue);
-    void lastBallReverted(int laneId);
-    void laneShutdown(int laneId);

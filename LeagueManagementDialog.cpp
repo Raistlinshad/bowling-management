@@ -1330,9 +1330,6 @@ void EnhancedLeagueSetupDialog::updateSummary()
     m_summaryText->setHtml(summary);
 }
 
-// Update BowlerInfo type alias to match DatabaseManager
-using BowlerInfo = BowlerData;
-
 void LeagueManagementDialog::loadBowlersFromDatabase()
 {
     DatabaseManager* db = DatabaseManager::instance();

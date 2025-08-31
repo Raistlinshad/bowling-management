@@ -15,7 +15,6 @@
 #include <QDialog>
 #include <QMap>
 #include "LaneServer.h"
-#include "EventBus.h"
 #include "Actions.h"
 #include "EnhancedLaneWidget.h"
 #include "GameDisplayDialog.h"
@@ -73,7 +72,7 @@ private:
     QFrame *m_quickAccessFrame;
     QScrollArea *m_laneScrollArea;
     QWidget *m_laneContainer;
-    QGridLayout *m_laneLayout;
+    QHBoxLayout *m_laneLayout;
     QWidget *m_mainContentArea;
     QPushButton *m_bowlerManagementBtn;
     
@@ -82,7 +81,6 @@ private:
     
     // Core components
     LaneServer *m_laneServer;
-    EventBus *m_eventBus;
     Actions *m_actions;
     
     // Enhanced lane widgets

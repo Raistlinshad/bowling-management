@@ -27,6 +27,7 @@
 #include <QScreen>
 #include <QMap>
 #include <QTabWidget>
+#include <QRadioButton> 
 
 class MainWindow; 
 
@@ -188,9 +189,6 @@ private:
     QPushButton *m_createBtn;
     QPushButton *m_cancelBtn;
     
-    // All the tab widgets and controls from the complete setup...
-    // (I'll include the essential ones for brevity)
-    
     // Basic Info Tab
     QWidget *m_basicInfoTab;
     QLineEdit *m_leagueNameEdit;
@@ -273,7 +271,6 @@ private:
     
     // Data
     QVector<TeamData> m_teams;
-    QVector<BowlerInfo> m_availableBowlers;
     int m_totalLanes;
 };
 

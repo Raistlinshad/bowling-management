@@ -8,7 +8,6 @@ CalendarDialog::CalendarDialog(MainWindow *mainWindow, QWidget *parent)
     : QDialog(parent)
     , m_mainWindow(mainWindow)
     , m_dbManager(DatabaseManager::instance())
-    , m_eventBus(new EventBus(this))
     , m_selectedDate(QDate::currentDate())
     , m_totalLanes(8)
     , m_startHour(8)
@@ -1068,7 +1067,6 @@ void CalendarDialog::saveEvent()
         eventData["title"] = event.title;
         
         QString eventType = (m_editingEventId > 0) ? "booking_updated" : "booking_created";
-        m_eventBus->publish("calendar", eventType, eventData);
         
         clearBookingForm();
         refreshCalendarViews();
@@ -1144,8 +1142,6 @@ void CalendarDialog::deleteEvent(int eventId)
             eventData["date"] = event.date.toString(Qt::ISODate);
             eventData["lane_id"] = event.laneId;
             eventData["title"] = event.title;
-            
-            m_eventBus->publish("calendar", "booking_cancelled", eventData);
             
             QMessageBox::information(this, "Booking Deleted", 
                                    "The booking has been deleted successfully.");
@@ -1364,8 +1360,6 @@ void CalendarDialog::addLeagueSchedule(const QString &leagueName, const QDate &s
         eventData["start_date"] = startDate.toString(Qt::ISODate);
         eventData["weeks"] = weeks;
         eventData["events_created"] = createdEvents.size();
-        
-        m_eventBus->publish("calendar", "league_schedule_added", eventData);
         
         refreshCalendarViews();
     } else {

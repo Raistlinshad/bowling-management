@@ -121,6 +121,7 @@ class GameDisplayDialog : public QDialog
 
 public:
     explicit GameDisplayDialog(int laneNumber, const QJsonObject &gameData, QWidget *parent = nullptr);
+    void updateGameInfo();
 
 signals:
     void holdToggled(int laneNumber, bool hold);
@@ -145,7 +146,6 @@ private:
     void setupEditPanel();
     void setupButtons();
     void showPinConfigDialog(const QString &bowlerName, int frame, int ball);
-    void updateGameInfo();
     bool isGameCompleted() const;
     
     int m_laneNumber;

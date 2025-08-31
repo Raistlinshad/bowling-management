@@ -12,10 +12,9 @@
 #include <QApplication>
 #include <QDebug>
 
-Actions::Actions(MainWindow *mainWindow, EventBus *eventBus, QObject *parent)
+Actions::Actions(MainWindow *mainWindow, QObject *parent)
     : QObject(parent)
     , m_mainWindow(mainWindow)
-    , m_eventBus(eventBus)
 {
 }
 
@@ -226,9 +225,10 @@ void Actions::sendGameToLane(int laneId, const QString &gameType, const QJsonObj
     commandData["type"] = gameType;
     commandData["data"] = gameData;
     
-    bool success = m_eventBus->publish("server", "lane_command", commandData);
-    
-    if (success) {
+    // Get LaneServer from mainWindow and call directly
+    LaneServer *laneServer = m_mainWindow->findChild<LaneServer*>();
+    if (laneServer) {
+        laneServer->onLaneCommand(commandData);
         QMessageBox::information(m_mainWindow, "Game Started", 
                                QString("Game started on lane %1").arg(laneId));
     } else {

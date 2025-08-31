@@ -121,7 +121,7 @@ void EnhancedLaneWidget::updateGameData(const QJsonObject &gameData)
     QJsonArray bowlers = gameData["bowlers"].toArray();
     for (const QJsonValue &bowlerValue : bowlers) {
         QJsonObject bowlerObj = bowlerValue.toObject();
-        BowlerData bowler;
+        BowlerGameState bowler;
         bowler.name = bowlerObj["name"].toString();
         bowler.currentFrame = bowlerObj["current_frame"].toInt(1);
         bowler.currentBall = bowlerObj["current_ball"].toInt(1);
@@ -204,7 +204,7 @@ void EnhancedLaneWidget::updateDisplay()
             if (m_gameData.totalGames > 1) {
                 progress = QString("Game %1 of %2").arg(m_gameData.gamesPlayed + 1).arg(m_gameData.totalGames);
             } else {
-                BowlerData &current = m_gameData.bowlers[m_gameData.currentBowlerIndex];
+                BowlerGameState &current = m_gameData.bowlers[m_gameData.currentBowlerIndex];
                 progress = QString("Frame %1, Ball %2").arg(current.currentFrame).arg(current.currentBall);
             }
             m_gameProgressLabel->setText(progress);
@@ -285,7 +285,7 @@ void EnhancedLaneWidget::updateButtonsForStatus()
 void EnhancedLaneWidget::createBowlerButtons()
 {
     for (int i = 0; i < m_gameData.bowlers.size(); ++i) {
-        const BowlerData &bowler = m_gameData.bowlers[i];
+        const BowlerGameState &bowler = m_gameData.bowlers[i];
         
         QPushButton *bowlerBtn = new QPushButton(bowler.name);
         

@@ -8,8 +8,19 @@
 int PinState::getValue() const
 {
     int value = 0;
+    // In 5-pin bowling, pins have different values:
+    // Pin 0 (left corner): 2 points
+    // Pin 1 (left): 3 points  
+    // Pin 2 (center/headpin): 5 points
+    // Pin 3 (right): 3 points
+    // Pin 4 (right corner): 2 points
+    
+    int pinValues[5] = {2, 3, 5, 3, 2};
+    
     for (int i = 0; i < 5; ++i) {
-        if (!pins[i]) value++; // Knocked down pins count toward score
+        if (!pins[i]) { // Pin is knocked down
+            value += pinValues[i];
+        }
     }
     return value;
 }
@@ -21,11 +32,46 @@ void PinState::setValue(int value)
         pins[i] = true;
     }
     
-    // Knock down pins from left to right for remaining value
-    for (int i = 0; i < 5 && value > 0; ++i) {
-        if (i != 2 && pins[i]) { // Skip center pin if already knocked down
-            pins[i] = false;
-            value--;
+    // Knock down pins to achieve the target value
+    // Priority: center pin first (5 pts), then corners (2 pts each), then sides (3 pts each)
+    int remaining = value;
+    
+    // Try center pin first (headpin)
+    if (remaining >= 5) {
+        pins[2] = false; // Center pin (headpin)
+        remaining -= 5;
+    }
+    
+    // Then corner pins (2 points each)
+    if (remaining >= 2 && pins[0]) {
+        pins[0] = false;
+        remaining -= 2;
+    }
+    if (remaining >= 2 && pins[4]) {
+        pins[4] = false;
+        remaining -= 2;
+    }
+    
+    // Then side pins (3 points each)
+    if (remaining >= 3 && pins[1]) {
+        pins[1] = false;
+        remaining -= 3;
+    }
+    if (remaining >= 3 && pins[3]) {
+        pins[3] = false;
+        remaining -= 3;
+    }
+    
+    // If we still have remaining value, try any combination
+    if (remaining > 0) {
+        for (int i = 0; i < 5 && remaining > 0; ++i) {
+            if (pins[i]) {
+                int pinValues[5] = {2, 3, 5, 3, 2};
+                if (remaining >= pinValues[i]) {
+                    pins[i] = false;
+                    remaining -= pinValues[i];
+                }
+            }
         }
     }
 }
@@ -51,10 +97,16 @@ void PinConfigWidget::setupUI()
     QVBoxLayout *layout = new QVBoxLayout(this);
     
     // Title
-    QLabel *titleLabel = new QLabel("Pin Configuration");
+    QLabel *titleLabel = new QLabel("Pin Configuration (5-Pin Bowling)");
     titleLabel->setStyleSheet("QLabel { font-weight: bold; font-size: 14px; color: white; }");
     titleLabel->setAlignment(Qt::AlignCenter);
     layout->addWidget(titleLabel);
+    
+    // Pin values explanation
+    QLabel *valuesLabel = new QLabel("Pin Values: Corner=2pts, Side=3pts, Center=5pts");
+    valuesLabel->setStyleSheet("QLabel { font-size: 11px; color: #ccc; }");
+    valuesLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(valuesLabel);
     
     // Pin display in 5-pin formation
     QWidget *pinWidget = new QWidget;
@@ -62,30 +114,31 @@ void PinConfigWidget::setupUI()
     pinLayout->setSpacing(10);
     
     // 5-pin bowling pin arrangement:
-    //   ○ ○
-    //  ○ ○ ○
+    // 0       1
+    //   2   4
+    //      3
+    // Pin values: 0=2pts, 1=3pts, 2=5pts(center), 3=3pts, 4=2pts
     
-    // Back row (pins 0, 1)
-    for (int i = 0; i < 2; ++i) {
+    int pinValues[5] = {2, 3, 5, 3, 2};
+    
+    // Create all pin buttons
+    for (int i = 0; i < 5; ++i) {
         QPushButton *pinBtn = new QPushButton;
         pinBtn->setFixedSize(40, 40);
         pinBtn->setCheckable(true);
         pinBtn->setProperty("pinIndex", i);
+        pinBtn->setToolTip(QString("Pin %1: %2 points").arg(i+1).arg(pinValues[i]));
+        
         connect(pinBtn, &QPushButton::clicked, this, &PinConfigWidget::onPinClicked);
         m_pinButtons.append(pinBtn);
-        pinLayout->addWidget(pinBtn, 0, i + 1);
     }
     
-    // Front row (pins 2, 3, 4) - pin 2 is the center/headpin
-    for (int i = 2; i < 5; ++i) {
-        QPushButton *pinBtn = new QPushButton;
-        pinBtn->setFixedSize(40, 40);
-        pinBtn->setCheckable(true);
-        pinBtn->setProperty("pinIndex", i);
-        connect(pinBtn, &QPushButton::clicked, this, &PinConfigWidget::onPinClicked);
-        m_pinButtons.append(pinBtn);
-        pinLayout->addWidget(pinBtn, 1, i - 2);
-    }
+    // Position pins in correct diamond formation
+    pinLayout->addWidget(m_pinButtons[0], 0, 0); // Pin 0 - top left (2pts)
+    pinLayout->addWidget(m_pinButtons[1], 0, 3); // Pin 1 - top right (3pts)
+    pinLayout->addWidget(m_pinButtons[2], 1, 1); // Pin 2 - middle left (5pts - headpin)
+    pinLayout->addWidget(m_pinButtons[4], 1, 2); // Pin 4 - middle right (2pts)
+    pinLayout->addWidget(m_pinButtons[3], 2, 1, 1, 2); // Pin 3 - bottom center (3pts)
     
     layout->addWidget(pinWidget);
     
@@ -111,18 +164,26 @@ PinState PinConfigWidget::getPinState() const
 
 void PinConfigWidget::updateDisplay()
 {
+    int pinValues[5] = {2, 3, 5, 3, 2};
+    
     for (int i = 0; i < m_pinButtons.size(); ++i) {
         QPushButton *btn = m_pinButtons[i];
         bool standing = m_pinState.pins[i];
         
         btn->setChecked(!standing); // Button checked = pin down
-        btn->setText(standing ? "○" : "●");
+        
+        QString pinText = QString("%1\n%2").arg(pinValues[i]).arg(standing ? "○" : "●");
+        btn->setText(pinText);
         
         QString style;
         if (standing) {
-            style = "QPushButton { background-color: white; color: black; border: 2px solid #333; border-radius: 20px; font-size: 18px; }";
+            if (i == 2) { // Center pin (headpin)
+                style = "QPushButton { background-color: gold; color: black; border: 2px solid #333; border-radius: 20px; font-size: 12px; font-weight: bold; }";
+            } else {
+                style = "QPushButton { background-color: white; color: black; border: 2px solid #333; border-radius: 20px; font-size: 12px; }";
+            }
         } else {
-            style = "QPushButton { background-color: black; color: white; border: 2px solid #666; border-radius: 20px; font-size: 18px; }";
+            style = "QPushButton { background-color: black; color: white; border: 2px solid #666; border-radius: 20px; font-size: 12px; }";
         }
         btn->setStyleSheet(style);
     }
@@ -130,11 +191,12 @@ void PinConfigWidget::updateDisplay()
     int value = m_pinState.getValue();
     m_valueLabel->setText(QString("Value: %1").arg(value));
     
-    // Special case display for strikes and spares in 5-pin bowling
+    // Special case display for strikes
     if (value == 15) { // All pins down - strike
-        m_valueLabel->setText("Value: 15 (STRIKE)");
-    } else if (value == 10) { // Just headpin - common score
-        m_valueLabel->setText("Value: 10 (HEADPIN)");
+        m_valueLabel->setText("Value: 15 (STRIKE!)");
+        m_valueLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: gold; }");
+    } else {
+        m_valueLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: white; }");
     }
 }
 
@@ -161,6 +223,7 @@ FrameWidget::FrameWidget(int frameNumber, QWidget *parent)
 void FrameWidget::setupUI()
 {
     setFixedSize(80, 100);
+    setStyleSheet("FrameWidget { border: 1px solid #555; background-color: #2a2a2a; }");
     
     m_layout = new QVBoxLayout(this);
     m_layout->setSpacing(2);
@@ -776,11 +839,4 @@ void GameDisplayDialog::onShutdownLaneClicked()
         emit laneShutdown(m_laneNumber);
         close();
     }
-} down the specified number of pins
-    // For 5-pin bowling: center pin (headpin) is worth 5, others worth 1 each
-    if (value >= 5) {
-        pins[2] = false; // Center pin (headpin)
-        value -= 5;
-    }
-    
-    // Knock
+}
